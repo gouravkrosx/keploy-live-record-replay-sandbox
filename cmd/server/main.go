@@ -30,9 +30,14 @@ func main() {
 	}
 	defer db.Close()
 
-	// Run migrations
-	if err := db.AutoMigrate(); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+	// Run migrations if enabled
+	if cfg.AutoMigrate {
+		if err := db.AutoMigrate(); err != nil {
+			log.Fatalf("Failed to run migrations: %v", err)
+		}
+		log.Println("✅ Database migrations completed")
+	} else {
+		log.Println("⏭️  Auto-migration disabled, skipping...")
 	}
 
 	// Initialize JWT service

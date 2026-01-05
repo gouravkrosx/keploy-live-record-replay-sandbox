@@ -19,6 +19,7 @@ type Config struct {
 	JWTSecret             string
 	JWTExpiryHours        int
 	JWTRefreshExpiryHours int
+	AutoMigrate           bool
 }
 
 func Load() (*Config, error) {
@@ -35,6 +36,8 @@ func Load() (*Config, error) {
 		jwtRefreshExpiry = 168
 	}
 
+	autoMigrate := getEnv("AUTO_MIGRATE", "true")
+
 	config := &Config{
 		Port:                  getEnv("PORT", "1105"),
 		Env:                   getEnv("ENV", "development"),
@@ -46,6 +49,7 @@ func Load() (*Config, error) {
 		JWTSecret:             getEnv("JWT_SECRET", "default-secret-change-me"),
 		JWTExpiryHours:        jwtExpiry,
 		JWTRefreshExpiryHours: jwtRefreshExpiry,
+		AutoMigrate:           autoMigrate == "true" || autoMigrate == "1",
 	}
 
 	return config, nil
