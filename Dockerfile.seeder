@@ -1,0 +1,17 @@
+# Seeder Dockerfile - includes Go runtime to run the seeder
+FROM golang:1.25-alpine
+
+WORKDIR /app
+
+# Install dependencies
+RUN apk add --no-cache git
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Run the seeder
+CMD ["go", "run", "cmd/seeder/main.go"]

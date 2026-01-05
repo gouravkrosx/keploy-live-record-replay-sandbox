@@ -1,0 +1,84 @@
+services:
+
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: marketplace-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: marketplace_db
+      MYSQL_USER: marketplace
+      MYSQL_PASSWORD: marketplace123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - marketplace-network
+
+  # Data Seeder - Run with: docker compose run --rm seeder
+  seeder:
+    build:
+      context: .
+      dockerfile: Dockerfile.seeder
+    container_name: marketplace-seeder
+    environment:
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=marketplace
+      - DB_PASSWORD=marketplace123
+      - DB_NAME=marketplace_db
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - marketplace-network
+    profiles:
+      - seed
+
+  # Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: marketplace-api
+    restart: unless-stopped
+    ports:
+      - "1105:1105"
+    environment:
+      - PORT=1105
+      - ENV=development
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=marketplace
+      - DB_PASSWORD=marketplace123
+      - DB_NAME=marketplace_db
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - JWT_EXPIRY_HOURS=24
+      - JWT_REFRESH_EXPIRY_HOURS=168
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - marketplace-network
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  marketplace-network:
+    driver: bridge

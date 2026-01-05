@@ -1,0 +1,30 @@
+# Environment variables
+.env
+
+# Binary
+main
+*.exe
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage.out
+coverage.html
+
+# Vendor (if not using)
+# vendor/
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
