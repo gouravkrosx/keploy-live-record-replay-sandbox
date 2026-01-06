@@ -183,9 +183,38 @@ def get_all_products(page=1):
     wait()
     return success
 
+def get_products_large_page(page=1):
+    """Get products with larger page size (100 items) - causes more DB data pull"""
+    response, success = make_request("GET", f"/products?page={page}&limit=100")
+    if success and response:
+        products = response.get("data", {}).get("data", [])
+        for p in products[:20]:  # Store first 20
+            if p.get("id") and p["id"] not in [x["id"] for x in fetched_data["products"]]:
+                fetched_data["products"].append(p)
+    wait()
+    return success
+
+def get_products_max_page(page=1):
+    """Get products with max page size (200 items) - causes heavy DB data pull"""
+    response, success = make_request("GET", f"/products?page={page}&limit=200")
+    wait()
+    return success
+
+def get_products_with_relations():
+    """Get products with category and seller relations included"""
+    response, success = make_request("GET", "/products?include=category,seller&limit=50")
+    wait()
+    return success
+
 def search_products(query):
     """Search products by query"""
     response, success = make_request("GET", f"/products?q={query}")
+    wait()
+    return success
+
+def search_products_large(query):
+    """Search products by query with large page size"""
+    response, success = make_request("GET", f"/products?q={query}&limit=100")
     wait()
     return success
 
@@ -195,15 +224,39 @@ def filter_products_by_price(min_price, max_price):
     wait()
     return success
 
+def filter_products_by_price_large(min_price, max_price):
+    """Filter products by price range with large page size - more DB pull"""
+    response, success = make_request("GET", f"/products?minPrice={min_price}&maxPrice={max_price}&limit=100")
+    wait()
+    return success
+
 def get_product_by_id(product_id):
     """Get single product details"""
     response, success = make_request("GET", f"/products/{product_id}")
     wait()
     return success
 
+def get_product_with_all_data(product_id):
+    """Get product with all related data - reviews, category, seller"""
+    response, success = make_request("GET", f"/products/{product_id}?include=reviews,category,seller")
+    wait()
+    return success
+
 def get_product_reviews(product_id):
     """Get reviews for a product"""
     response, success = make_request("GET", f"/products/{product_id}/reviews")
+    wait()
+    return success
+
+def get_product_reviews_large(product_id):
+    """Get reviews for a product with large page size - causes DB to pull many 2KB reviews"""
+    response, success = make_request("GET", f"/products/{product_id}/reviews?limit=100")
+    wait()
+    return success
+
+def get_product_reviews_max(product_id):
+    """Get max reviews for a product - DB pulls ~200KB of review content"""
+    response, success = make_request("GET", f"/products/{product_id}/reviews?limit=200")
     wait()
     return success
 
@@ -263,6 +316,24 @@ def get_all_orders():
         for o in orders[:10]:
             if o.get("id") and o["id"] not in [x["id"] for x in fetched_data["orders"]]:
                 fetched_data["orders"].append(o)
+    wait()
+    return success
+
+def get_orders_large_page():
+    """Get orders with large page size (100) - causes heavy DB pull with 1KB notes each"""
+    response, success = make_request("GET", "/orders?limit=100", token=tokens["admin"])
+    wait()
+    return success
+
+def get_orders_max_page():
+    """Get orders with max page size (200) - causes very heavy DB pull"""
+    response, success = make_request("GET", "/orders?limit=200&include=items,payment", token=tokens["admin"])
+    wait()
+    return success
+
+def get_orders_with_details():
+    """Get orders with all related data - items, payment, addresses"""
+    response, success = make_request("GET", "/orders?include=items,payment,shippingAddress&limit=50", token=tokens["admin"])
     wait()
     return success
 
@@ -417,17 +488,27 @@ def run_operations():
     get_all_coupons()
     
     # Phase 4: Read operations loop
-    log("\nPhase 4: Read Operations", Colors.YELLOW)
+    log("\nPhase 4: Read Operations (Heavy Data Pull)", Colors.YELLOW)
     
     operations = [
-        # Product operations
+        # Product operations - normal
         lambda: get_all_products(random.randint(1, 3)),
-        lambda: search_products(random.choice(["laptop", "phone", "shirt", "shoes", "camera"])),
+        lambda: search_products(random.choice(["laptop", "phone", "shirt", "shoes", "camera", "premium", "pro", "ultra"])),
         lambda: filter_products_by_price(50, 500),
         lambda: filter_products_by_price(100, 1000),
         lambda: filter_products_by_price(500, 5000),
         lambda: get_product_by_id(random.choice(fetched_data["products"])["id"]) if fetched_data["products"] else get_all_products(),
         lambda: get_product_reviews(random.choice(fetched_data["products"])["id"]) if fetched_data["products"] else get_all_products(),
+        
+        # Product operations - HEAVY DATA PULL (large pages, relations)
+        lambda: get_products_large_page(random.randint(1, 10)),
+        lambda: get_products_max_page(random.randint(1, 5)),
+        lambda: get_products_with_relations(),
+        lambda: search_products_large(random.choice(["pro", "premium", "ultra", "deluxe", "edition"])),
+        lambda: filter_products_by_price_large(10, 2000),
+        lambda: get_product_with_all_data(random.choice(fetched_data["products"])["id"]) if fetched_data["products"] else get_all_products(),
+        lambda: get_product_reviews_large(random.choice(fetched_data["products"])["id"]) if fetched_data["products"] else get_all_products(),
+        lambda: get_product_reviews_max(random.choice(fetched_data["products"])["id"]) if fetched_data["products"] else get_all_products(),
         
         # Category operations
         lambda: get_all_categories(),
@@ -445,10 +526,15 @@ def run_operations():
         lambda: get_all_users(),
         lambda: get_user_by_id(random.choice(fetched_data["users"])["id"]) if fetched_data["users"] else get_all_users(),
         
-        # Order operations
+        # Order operations - normal
         lambda: get_all_orders(),
         lambda: get_order_by_id(random.choice(fetched_data["orders"])["id"]) if fetched_data["orders"] else get_all_orders(),
         lambda: get_user_orders(),
+        
+        # Order operations - HEAVY DATA PULL (large pages, relations)
+        lambda: get_orders_large_page(),
+        lambda: get_orders_max_page(),
+        lambda: get_orders_with_details(),
         
         # Coupon operations
         lambda: get_all_coupons(),
