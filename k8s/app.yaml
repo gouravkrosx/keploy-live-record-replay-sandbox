@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: live
+data:
+  PORT: "1105"
+  ENV: development
+  DB_HOST: mysql
+  DB_PORT: "3306"
+  DB_USER: marketplace
+  DB_PASSWORD: marketplace123
+  DB_NAME: marketplace_db
+  JWT_SECRET: your-super-secret-jwt-key-change-in-production
+  JWT_EXPIRY_HOURS: "24"
+  JWT_REFRESH_EXPIRY_HOURS: "168"
+  AUTO_MIGRATE: "false"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: marketplace-api
+  namespace: live
+  labels:
+    app: marketplace-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: marketplace-api
+  template:
+    metadata:
+      labels:
+        app: marketplace-api
+    spec:
+      serviceAccountName: marketplace-api
+      initContainers:
+        # Wait for seeder job to complete
+        - name: wait-for-seeder
+          image: bitnami/kubectl:latest
+          imagePullPolicy: Never  # Use local image from Kind
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for seeder job to complete..."
+              # Wait for the job to exist and complete
+              until kubectl get job seeder -n live -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q "1"; do
+                echo "Seeder job not completed yet, waiting..."
+                sleep 10
+              done
+              echo "Seeder job completed!"
+      containers:
+        - name: marketplace-api
+          image: marketplace-api:latest
+          imagePullPolicy: Never  # Use local image from Kind
+          ports:
+            - containerPort: 1105
+          envFrom:
+            - configMapRef:
+                name: app-config
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 1105
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 1105
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: marketplace-api
+  namespace: live
+spec:
+  selector:
+    app: marketplace-api
+  ports:
+    - port: 1105
+      targetPort: 1105
+  type: ClusterIP

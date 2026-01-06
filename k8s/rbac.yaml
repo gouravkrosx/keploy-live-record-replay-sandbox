@@ -1,0 +1,30 @@
+# RBAC for the app init container to check seeder job status
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: marketplace-api
+  namespace: live
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-reader
+  namespace: live
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: marketplace-api-job-reader
+  namespace: live
+subjects:
+  - kind: ServiceAccount
+    name: marketplace-api
+    namespace: live
+roleRef:
+  kind: Role
+  name: job-reader
+  apiGroup: rbac.authorization.k8s.io

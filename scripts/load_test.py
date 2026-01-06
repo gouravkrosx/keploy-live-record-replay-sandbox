@@ -5,11 +5,21 @@ Executes 250+ API operations with configurable intervals between calls.
 Designed to be re-runnable without errors.
 
 Usage:
-    python3 load_test.py                    # Default: 250 ops, 2s delay
+    python3 load_test.py                    # Default: Native/Docker mode, 250 ops, 2s delay
+    python3 load_test.py --k8s              # Kubernetes mode (auto port-forward)
     python3 load_test.py --delay 1          # 1 second delay
     python3 load_test.py --delay 0.5        # 0.5 second delay
     python3 load_test.py --ops 100          # 100 operations
     python3 load_test.py --delay 1 --ops 50 # 50 ops with 1s delay
+    
+Native/Docker Mode (default):
+    - Connects directly to localhost:1105
+    - No port-forwarding needed
+    
+Kubernetes Mode (--k8s):
+    - Automatically starts port-forward to the app service
+    - Uses localhost URL via port-forward
+    - Cleans up port-forward on exit
 """
 
 import requests
@@ -18,16 +28,25 @@ import json
 import random
 import sys
 import argparse
+import subprocess
+import signal
+import atexit
 from datetime import datetime
 
 # Configuration - can be overridden via command line
 BASE_URL = "http://localhost:1105/api/v1"
 DEFAULT_DELAY_SECONDS = 2
 DEFAULT_TOTAL_OPERATIONS = 250
+DEFAULT_NAMESPACE = "live"
 
 # These will be set from command line args
 DELAY_SECONDS = DEFAULT_DELAY_SECONDS
 TOTAL_OPERATIONS = DEFAULT_TOTAL_OPERATIONS
+K8S_MODE = False  # Default to native/docker mode
+NAMESPACE = DEFAULT_NAMESPACE
+
+# Port-forward process (for cleanup)
+port_forward_process = None
 
 
 # Test credentials (from seeded data)
@@ -586,12 +605,21 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python3 load_test.py                     # Default: 250 ops, 2s delay
+    python3 load_test.py                     # Default: Native/Docker mode, 250 ops, 2s delay
+    python3 load_test.py --k8s               # Kubernetes mode (auto port-forward)
     python3 load_test.py --delay 1           # 1 second delay
     python3 load_test.py --delay 0.5         # 0.5 second delay  
     python3 load_test.py --ops 100           # 100 operations
     python3 load_test.py --delay 1 --ops 50  # 50 ops with 1s delay
     python3 load_test.py -d 0.5 -o 100       # Short form
+    python3 load_test.py --k8s -n custom     # K8s mode with custom namespace
+
+Native/Docker Mode (default):
+    Connect directly to localhost:1105 without port-forwarding.
+    
+Kubernetes Mode (--k8s):
+    The script will automatically set up port-forwarding to the
+    marketplace-api service in the specified namespace.
         """
     )
     parser.add_argument(
@@ -612,16 +640,112 @@ Examples:
         default=BASE_URL,
         help=f"Base URL for the API (default: {BASE_URL})"
     )
+    parser.add_argument(
+        "--k8s",
+        action="store_true",
+        default=False,
+        dest="k8s",
+        help="Enable Kubernetes mode with auto port-forwarding (default: disabled)"
+    )
+    parser.add_argument(
+        "-n", "--namespace",
+        type=str,
+        default=DEFAULT_NAMESPACE,
+        help=f"Kubernetes namespace, used with --k8s (default: {DEFAULT_NAMESPACE})"
+    )
     return parser.parse_args()
 
+def cleanup_port_forward():
+    """Clean up port-forward process"""
+    global port_forward_process
+    if port_forward_process:
+        log("Stopping port-forward...", Colors.YELLOW)
+        port_forward_process.terminate()
+        try:
+            port_forward_process.wait(timeout=5)
+        except:
+            port_forward_process.kill()
+        port_forward_process = None
+
+def start_port_forward(namespace):
+    """Start kubectl port-forward in background"""
+    global port_forward_process
+    
+    log(f"Starting port-forward to marketplace-api in namespace '{namespace}'...", Colors.CYAN)
+    
+    try:
+        # Start port-forward in background
+        port_forward_process = subprocess.Popen(
+            ["kubectl", "port-forward", "svc/marketplace-api", "1105:1105", "-n", namespace],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        
+        # Register cleanup handler
+        atexit.register(cleanup_port_forward)
+        
+        # Wait for port-forward to be ready
+        log("Waiting for port-forward to be ready...", Colors.CYAN)
+        time.sleep(3)
+        
+        # Check if process is still running
+        if port_forward_process.poll() is not None:
+            stderr = port_forward_process.stderr.read().decode()
+            log(f"Port-forward failed: {stderr}", Colors.RED)
+            return False
+        
+        # Test connection
+        try:
+            response = requests.get("http://localhost:1105/health", timeout=5)
+            if response.status_code == 200:
+                log("✓ Port-forward ready!", Colors.GREEN)
+                return True
+        except:
+            pass
+        
+        # Give it a bit more time
+        time.sleep(2)
+        try:
+            response = requests.get("http://localhost:1105/health", timeout=5)
+            if response.status_code == 200:
+                log("✓ Port-forward ready!", Colors.GREEN)
+                return True
+        except Exception as e:
+            log(f"Could not connect: {e}", Colors.RED)
+            return False
+            
+    except FileNotFoundError:
+        log("kubectl not found. Please install kubectl.", Colors.RED)
+        return False
+    except Exception as e:
+        log(f"Failed to start port-forward: {e}", Colors.RED)
+        return False
+
 def main():
-    global DELAY_SECONDS, TOTAL_OPERATIONS, BASE_URL
+    global DELAY_SECONDS, TOTAL_OPERATIONS, BASE_URL, K8S_MODE, NAMESPACE
     
     # Parse command line arguments
     args = parse_args()
     DELAY_SECONDS = args.delay
     TOTAL_OPERATIONS = args.ops
     BASE_URL = args.url
+    K8S_MODE = args.k8s
+    NAMESPACE = args.namespace
+    
+    # Handle K8s mode
+    if K8S_MODE:
+        log(f"\n{'='*60}", Colors.BOLD)
+        log("Kubernetes Mode Enabled", Colors.CYAN)
+        log(f"{'='*60}", Colors.BOLD)
+        
+        if not start_port_forward(NAMESPACE):
+            log("Failed to set up port-forward. Exiting.", Colors.RED)
+            log("Hint: Use --no-k8s flag for native/docker mode.", Colors.YELLOW)
+            return 1
+    else:
+        log(f"\n{'='*60}", Colors.BOLD)
+        log("Native/Docker Mode (no port-forward)", Colors.CYAN)
+        log(f"{'='*60}", Colors.BOLD)
     
     start_time = time.time()
     
@@ -646,6 +770,10 @@ def main():
     except Exception as e:
         log(f"\nFatal error: {e}", Colors.RED)
         return 1
+    finally:
+        # Clean up port-forward
+        if K8S_MODE:
+            cleanup_port_forward()
 
 if __name__ == "__main__":
     sys.exit(main())
