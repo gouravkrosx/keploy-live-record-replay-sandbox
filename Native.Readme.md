@@ -74,19 +74,51 @@ JWT_REFRESH_EXPIRY_HOURS=168
 go run cmd/seeder/main.go
 ```
 
+**⏱️ Note**: Seeding takes approximately **45-60 seconds** and generates ~31MB of test data.
+
 Expected output:
 ```
-🌱 Starting data seeder...
+🌱 Starting FAST data seeder (Target: ~100MB stored, 300-400MB on query)...
+📊 Configuration:
+   - Products: 500 (each with ~25KB description, ~15KB attributes)
+   - Reviews: ~5000 (each with ~8KB content)
+   - Orders: 2000 (each with ~3KB notes)
+   - Estimated stored data: ~65MB
+   - Estimated seeding time: 3-5 minutes
 🗑️  Flushing existing data...
-📊 Seeding fresh data...
+📊 Seeding dataset...
 👥 Creating users...
-   Created 26 users
+   Created 56 users
 📁 Creating categories...
-   Created 28 categories
-🛍️ Creating products...
-   Created 54 products
-...
-✅ Data seeding completed successfully!
+   Created 22 categories
+🛍️ Creating products (with large descriptions)...
+   ... created 100/500 products
+   ... created 437 products
+📍 Creating addresses...
+   Created 55 addresses
+📦 Creating inventory...
+   Created 852 inventory records
+🎟️ Creating coupons...
+   Created 3 coupons
+🛒 Creating carts...
+   Created cart items
+📋 Creating orders (with large notes)...
+   ... created 2000 orders
+⭐ Creating reviews (with large content)...
+   ... created 4000+ reviews
+
+📊 Data Summary:
+═══════════════════════════════════════
+   users          :     56 records
+   categories     :     22 records
+   products       :    437 records (~22MB)
+   orders         :   2000 records
+   order_items    :   9000+ records (~8MB)
+   reviews        :   4000+ records
+   Total database : ~31MB
+═══════════════════════════════════════
+
+✅ Data seeding completed in ~45 seconds!
 
 🔑 Test Credentials:
    Admin:    admin@marketplace.com / Password123!

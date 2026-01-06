@@ -1,6 +1,6 @@
 services:
 
-  # MySQL Database
+  # MySQL Database - Starts first
   mysql:
     image: mysql:8.0
     container_name: marketplace-mysql
@@ -28,7 +28,8 @@ services:
     networks:
       - marketplace-network
 
-  # Data Seeder - Run with: docker compose run --rm seeder
+  # Data Seeder - Runs after MySQL is healthy, exits when done
+  # The seeder populates the database with test data (~31MB, takes ~1 minute)
   seeder:
     build:
       context: .
@@ -46,10 +47,9 @@ services:
         condition: service_healthy
     networks:
       - marketplace-network
-    profiles:
-      - seed
+    # No restart - seeder should run once and exit
 
-  # Application
+  # Application - Starts after seeder completes successfully
   app:
     build:
       context: .
@@ -69,9 +69,12 @@ services:
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
       - JWT_EXPIRY_HOURS=24
       - JWT_REFRESH_EXPIRY_HOURS=168
+      - AUTO_MIGRATE=false
     depends_on:
       mysql:
         condition: service_healthy
+      seeder:
+        condition: service_completed_successfully
     networks:
       - marketplace-network
 
@@ -82,3 +85,4 @@ volumes:
 networks:
   marketplace-network:
     driver: bridge
+

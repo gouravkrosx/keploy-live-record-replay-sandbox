@@ -13,20 +13,32 @@ docker --version
 docker compose --version
 ```
 
-## Quick Start (3 Commands)
+## Quick Start (Single Command!)
 
 ```bash
-# 1. Start MySQL and Application
-docker compose up -d
-
-# 2. Wait for services to be healthy (about 30-60 seconds)
-docker compose ps
-
-# 3. Seed the database with test data (run once)
-docker compose --profile seed run --rm seeder
+# Build and start everything - MySQL → Seeder → App (automatic)
+# Only shows app logs (hides mysql and seeder logs)
+docker compose up --build --attach app
 ```
 
-That's it! The API will be available at `http://localhost:1105`
+This single command will:
+1. ✅ Start MySQL and wait for it to be healthy
+2. ✅ Run the seeder to populate the database (~45 seconds)
+3. ✅ Start the application after seeding completes
+4. ✅ Only display app logs (mysql and seeder logs are hidden)
+
+**⏱️ Note**: First run takes ~1-2 minutes as it builds images and seeds ~31MB of test data.
+
+**💡 Tip**: Use `--attach app` to hide mysql/seeder logs. You can always check them later:
+```bash
+# Check seeder logs
+docker compose logs seeder
+
+# Check mysql logs
+docker compose logs mysql
+```
+
+When ready, the API will be available at `http://localhost:1105`
 
 
 ## Step-by-Step Guide
@@ -44,12 +56,12 @@ cd /path/to/keploy-live-record-replay-sandbox
 docker compose up -d --build
 ```
 
-This will:
+This will automatically:
 1. Pull MySQL 8.0 image
-2. Build the Go application image
-3. Start MySQL container
-4. Wait for MySQL to be healthy
-5. Start the application container
+2. Build the Go application and seeder images
+3. Start MySQL container and wait for it to be healthy
+4. Run the seeder to populate the database with test data
+5. Start the application after seeding completes successfully
 
 ### Step 3: Verify Services
 
@@ -57,61 +69,73 @@ This will:
 # Check container status
 docker compose ps
 
-# Expected output:
-# NAME                 STATUS                   PORTS
-# marketplace-mysql    Up (healthy)             0.0.0.0:3306->3306/tcp
-# marketplace-api      Up                       0.0.0.0:1105->1105/tcp
+# Expected output (after seeding completes):
+# NAME                 STATUS                      PORTS
+# marketplace-mysql    Up (healthy)                0.0.0.0:3306->3306/tcp
+# marketplace-seeder   Exited (0)                  
+# marketplace-api      Up                          0.0.0.0:1105->1105/tcp
 ```
 
-### Step 4: Seed the Database (REQUIRED)
+**Note**: The seeder shows "Exited (0)" which means it completed successfully.
 
-**⚠️ Important**: This step must be run BEFORE using the API. It will:
-- Flush/clear ALL existing data from tables
-- Populate all tables with fresh test data (mix of small and large datasets)
+### Step 4: Verify Database is Seeded
+
+The seeder runs automatically! You can verify by checking the logs:
 
 ```bash
-# Run the data seeder inside the container
-docker compose --profile seed run --rm seeder
+docker compose logs seeder
+
 ```
 
 Expected output:
 ```
-🌱 Starting data seeder...
+🌱 Starting FAST data seeder (Target: ~100MB stored, 300-400MB on query)...
+📊 Configuration:
+   - Products: 500 (each with ~25KB description, ~15KB attributes)
+   - Reviews: ~5000 (each with ~8KB content)
+   - Orders: 2000 (each with ~3KB notes)
+   - Estimated stored data: ~65MB
+   - Estimated seeding time: 3-5 minutes
 🗑️  Flushing existing data...
    Cleared table: refresh_tokens
    Cleared table: cart_items
    ...
-📊 Seeding fresh data...
+📊 Seeding dataset...
 👥 Creating users...
-   Created 26 users
+   Created 56 users
 📁 Creating categories...
-   Created 28 categories (8 parent + 20 subcategories)
-🛍️ Creating products...
-   Created 56 products
+   Created 22 categories
+🛍️ Creating products (with large descriptions)...
+   ... created 100/500 products
+   ... created 437 products
 📍 Creating addresses...
-   Created 13 addresses
+   Created 55 addresses
 📦 Creating inventory...
-   Created 100+ inventory records across 3 warehouses
+   Created 852 inventory records across 3 warehouses
 🎟️ Creating coupons...
-   Created 8 coupons
-🛒 Creating carts with items...
-   Added items to 7 carts
-📋 Creating orders...
-   Created 50+ orders with items and payments
-⭐ Creating reviews...
-   Created 100+ reviews
+   Created 3 coupons
+🛒 Creating carts...
+   Created cart items
+📋 Creating orders (with large notes)...
+   ... created 2000 orders
+⭐ Creating reviews (with large content)...
+   ... created 4000+ reviews
 
 📊 Data Summary:
 ═══════════════════════════════════════
-   users          : 26 records
-   categories     : 28 records
-   products       : 56 records
-   addresses      : 13 records
-   inventories    : 100+ records
-   coupons        : 8 records
-   orders         : 50+ records
-   reviews        : 100+ records
+   users          :     56 records
+   categories     :     22 records
+   products       :    437 records (~22MB)
+   addresses      :     55 records
+   inventories    :    852 records
+   coupons        :      3 records
+   orders         :   2000 records
+   order_items    :   9000+ records (~8MB)
+   reviews        :   4000+ records
+   Total database : ~31MB
 ═══════════════════════════════════════
+
+✅ Data seeding completed in ~45 seconds!
 
 🔑 Test Credentials:
    Admin:    admin@marketplace.com / Password123!
@@ -133,16 +157,13 @@ Expected response:
 ## Complete Workflow Summary
 
 ```bash
-# 1. Start containers
+# 1. Start everything (MySQL → Seeder → App - automatic!)
 docker compose up -d --build
 
-# 2. Wait for healthy status
+# 2. Wait for seeding to complete and app to start (~2-3 minutes first time)
 docker compose ps
 
-# 3. Seed database (flushes old data, adds fresh data)
-docker compose --profile seed run --rm seeder
-
-# 4. Test the API
+# 3. Test the API
 curl http://localhost:1105/health
 curl http://localhost:1105/api/v1/products
 ```
@@ -151,13 +172,19 @@ curl http://localhost:1105/api/v1/products
 
 ### Start Services
 ```bash
-# Start in background
+# Start in background (no logs)
 docker compose up -d
 
-# Start with logs visible
+# Start with only app logs visible (recommended)
+docker compose up --attach app
+
+# Start with all logs visible
 docker compose up
 
-# Rebuild and start
+# Rebuild and start (only app logs)
+docker compose up --build --attach app
+
+# Rebuild and start in background
 docker compose up -d --build
 ```
 
@@ -190,8 +217,8 @@ docker compose logs -f mysql
 # Open shell in app container
 docker compose exec app sh
 
-# Re-seed database (reset all data)
-docker compose --profile seed run --rm seeder
+# Re-seed database (restart seeder to reset all data)
+docker compose up seeder --force-recreate
 
 # Connect to MySQL
 docker compose exec mysql mysql -u marketplace -pmarketplace123 marketplace_db
@@ -262,7 +289,10 @@ docker compose exec -T mysql mysql -u marketplace -pmarketplace123 marketplace_d
 ### Reset All Data
 ```bash
 # Re-run the seeder to flush and repopulate
-docker compose --profile seed run --rm seeder
+docker compose up seeder --force-recreate
+
+# Or restart everything from scratch
+docker compose down && docker compose up -d --build
 ```
 
 ## Troubleshooting
