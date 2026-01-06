@@ -4,7 +4,6 @@ metadata:
   name: seeder
   namespace: live
 spec:
-  ttlSecondsAfterFinished: 300  # Auto-cleanup after 5 minutes
   backoffLimit: 3
   template:
     metadata:
