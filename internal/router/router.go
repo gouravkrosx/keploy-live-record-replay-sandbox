@@ -191,6 +191,24 @@ func New(db *database.Database, jwtService *auth.JWTService) *chi.Mux {
 			r.Get("/customers", analyticsHandler.GetCustomerAnalytics)
 			r.Get("/inventory/alerts", analyticsHandler.GetInventoryAlerts)
 		})
+
+		// for large size mocks
+		// ==================== HEAVY DATA (for testing large database operations) ====================
+		heavyHandler := handlers.NewHeavyHandler(db)
+		r.Route("/heavy", func(r chi.Router) {
+			r.Use(authMw.RequireAuth)
+
+			r.Get("/products", heavyHandler.HeavyProducts)     // for large size mocks
+			r.Get("/orders", heavyHandler.HeavyOrders)         // for large size mocks
+			r.Get("/reviews", heavyHandler.HeavyReviews)       // for large size mocks
+			r.Get("/inventory", heavyHandler.HeavyInventory)   // for large size mocks
+			r.Get("/aggregate", heavyHandler.HeavyAggregate)   // for large size mocks
+			r.Get("/users", heavyHandler.HeavyUsers)           // for large size mocks
+			r.Get("/categories", heavyHandler.HeavyCategories) // for large size mocks
+			r.Get("/payments", heavyHandler.HeavyPayments)     // for large size mocks
+			r.Get("/carts", heavyHandler.HeavyCarts)           // for large size mocks
+			r.Get("/full-dump", heavyHandler.HeavyFullDump)    // for large size mocks
+		})
 	})
 
 	return r

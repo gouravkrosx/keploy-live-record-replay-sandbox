@@ -19,7 +19,7 @@ test:
     selectedTests: {}
     globalNoise:
         global: {
-            body: { "accessToken" : "", "refreshToken" : "" }
+            body: { "accessToken" : "", "refreshToken" : "" ,"queryTimeMs": ""}
         }
         test-sets: {}
     delay: 5
