@@ -15,14 +15,22 @@ Usage:
 import requests
 import time
 import argparse
+import subprocess
+import signal
+import atexit
+import sys
 from datetime import datetime
 
 # for large size mocks - Configuration
 NATIVE_BASE_URL = "http://localhost:1105/api/v1"
-K8S_BASE_URL = "http://localhost:1105/api/v1"  # Assumes port-forward is set up
+K8S_BASE_URL = "http://localhost:1105/api/v1"  # Via auto port-forward
+DEFAULT_NAMESPACE = "live"
 
 ADMIN_EMAIL = "admin@marketplace.com"
 ADMIN_PASSWORD = "Password123!"
+
+# Port-forward process (for cleanup)
+port_forward_process = None
 
 # Colors for terminal output
 class Colors:
@@ -192,6 +200,72 @@ def run_heavy_tests(base_url, num_apis, is_k8s):
     print()
     return failed == 0
 
+def cleanup_port_forward():
+    """Clean up port-forward process"""
+    global port_forward_process
+    if port_forward_process:
+        log("Stopping port-forward...", Colors.YELLOW)
+        port_forward_process.terminate()
+        try:
+            port_forward_process.wait(timeout=5)
+        except:
+            port_forward_process.kill()
+        port_forward_process = None
+
+def start_port_forward(namespace):
+    """Start kubectl port-forward in background"""
+    global port_forward_process
+    
+    log(f"Starting port-forward to marketplace-api in namespace '{namespace}'...", Colors.CYAN)
+    
+    try:
+        # Start port-forward in background
+        port_forward_process = subprocess.Popen(
+            ["kubectl", "port-forward", "svc/marketplace-api", "1105:1105", "-n", namespace],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        
+        # Register cleanup handler
+        atexit.register(cleanup_port_forward)
+        
+        # Wait for port-forward to be ready
+        log("Waiting for port-forward to be ready...", Colors.CYAN)
+        time.sleep(3)
+        
+        # Check if process is still running
+        if port_forward_process.poll() is not None:
+            stderr = port_forward_process.stderr.read().decode()
+            log(f"Port-forward failed: {stderr}", Colors.RED)
+            return False
+        
+        # Test connection
+        try:
+            response = requests.get("http://localhost:1105/health", timeout=5)
+            if response.status_code == 200:
+                log("✓ Port-forward ready!", Colors.GREEN)
+                return True
+        except:
+            pass
+        
+        # Give it a bit more time
+        time.sleep(2)
+        try:
+            response = requests.get("http://localhost:1105/health", timeout=5)
+            if response.status_code == 200:
+                log("✓ Port-forward ready!", Colors.GREEN)
+                return True
+        except Exception as e:
+            log(f"Could not connect: {e}", Colors.RED)
+            return False
+            
+    except FileNotFoundError:
+        log("kubectl not found. Please install kubectl.", Colors.RED)
+        return False
+    except Exception as e:
+        log(f"Failed to start port-forward: {e}", Colors.RED)
+        return False
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Heavy Data Load Test - Tests large database operation endpoints",
@@ -207,15 +281,18 @@ Examples:
     # Native/Docker: Test 5 APIs
     python3 heavy_load_test.py --api 5
     
-    # Kubernetes: Test 10 APIs (requires port-forward)
+    # Kubernetes: Test 10 APIs (auto port-forward)
     python3 heavy_load_test.py --k8s
     
     # Kubernetes: Test all 20 APIs
     python3 heavy_load_test.py --api 20 --k8s
+    
+    # Kubernetes with custom namespace
+    python3 heavy_load_test.py --k8s -n custom-namespace
 
 Note: 
   - For native/docker, ensure server is running on localhost:1105
-  - For k8s, set up port-forward first: kubectl port-forward svc/marketplace-api 1105:1105
+  - For k8s, port-forward is automatically set up and cleaned up
   - Make sure to run the seeder first to populate test data
         """
     )
@@ -230,29 +307,61 @@ Note:
     parser.add_argument(
         "--k8s",
         action="store_true",
-        help="Use Kubernetes environment (assumes port-forward is set up)"
+        help="Use Kubernetes environment with auto port-forwarding"
+    )
+    parser.add_argument(
+        "-n", "--namespace",
+        type=str,
+        default=DEFAULT_NAMESPACE,
+        help=f"Kubernetes namespace, used with --k8s (default: {DEFAULT_NAMESPACE})"
     )
     return parser.parse_args()
 
 def main():
     args = parse_args()
     
+    # Handle K8s mode with auto port-forwarding
+    if args.k8s:
+        log(f"\n{'='*60}", Colors.BOLD)
+        log("Kubernetes Mode - Auto Port-Forward", Colors.CYAN)
+        log(f"{'='*60}", Colors.BOLD)
+        
+        if not start_port_forward(args.namespace):
+            log("Failed to set up port-forward. Exiting.", Colors.RED)
+            return 1
+    else:
+        log(f"\n{'='*60}", Colors.BOLD)
+        log("Native/Docker Mode (no port-forward)", Colors.CYAN)
+        log(f"{'='*60}", Colors.BOLD)
+    
     # Select base URL based on environment
     base_url = K8S_BASE_URL if args.k8s else NATIVE_BASE_URL
     
     start_time = time.time()
-    success = run_heavy_tests(base_url, args.api, args.k8s)
-    elapsed = time.time() - start_time
     
-    log(f"Total execution time: {elapsed:.1f} seconds", Colors.CYAN)
-    
-    if success:
-        log("All heavy endpoint tests completed successfully! ✓", Colors.GREEN)
-        return 0
-    else:
-        log("Some tests failed", Colors.YELLOW)
+    try:
+        success = run_heavy_tests(base_url, args.api, args.k8s)
+        elapsed = time.time() - start_time
+        
+        log(f"Total execution time: {elapsed:.1f} seconds", Colors.CYAN)
+        
+        if success:
+            log("All heavy endpoint tests completed successfully! ✓", Colors.GREEN)
+            return 0
+        else:
+            log("Some tests failed", Colors.YELLOW)
+            return 1
+    except KeyboardInterrupt:
+        log("\n\nInterrupted by user", Colors.YELLOW)
+        return 130
+    except Exception as e:
+        log(f"\nFatal error: {e}", Colors.RED)
         return 1
+    finally:
+        # Clean up port-forward if in K8s mode
+        if args.k8s:
+            cleanup_port_forward()
 
 if __name__ == "__main__":
-    exit(main())
+    sys.exit(main())
 
