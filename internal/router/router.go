@@ -208,6 +208,17 @@ func New(db *database.Database, jwtService *auth.JWTService) *chi.Mux {
 			r.Get("/payments", heavyHandler.HeavyPayments)     // for large size mocks
 			r.Get("/carts", heavyHandler.HeavyCarts)           // for large size mocks
 			r.Get("/full-dump", heavyHandler.HeavyFullDump)    // for large size mocks
+			// New heavy endpoints
+			r.Get("/product-search", heavyHandler.HeavyProductSearch)           // for large size mocks
+			r.Get("/order-history", heavyHandler.HeavyOrderHistory)             // for large size mocks
+			r.Get("/user-activity", heavyHandler.HeavyUserActivity)             // for large size mocks
+			r.Get("/analytics-dashboard", heavyHandler.HeavyAnalyticsDashboard) // for large size mocks
+			r.Get("/sales-trends", heavyHandler.HeavySalesTrends)               // for large size mocks
+			r.Get("/inventory-report", heavyHandler.HeavyInventoryReport)       // for large size mocks
+			r.Get("/review-sentiment", heavyHandler.HeavyReviewSentiment)       // for large size mocks
+			r.Get("/category-tree", heavyHandler.HeavyCategoryTree)             // for large size mocks
+			r.Get("/shipping-data", heavyHandler.HeavyShippingData)             // for large size mocks
+			r.Get("/financial-summary", heavyHandler.HeavyFinancialSummary)     // for large size mocks
 		})
 	})
 

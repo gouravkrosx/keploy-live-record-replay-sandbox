@@ -5,11 +5,11 @@ Heavy Data Load Test Script - Tests heavy database operation endpoints
 NOT part of regular application flow - used for testing large mock scenarios
 
 Usage:
-    python3 heavy_load_test.py                    # Default: 5 APIs, native/docker
-    python3 heavy_load_test.py --api 10           # Hit all 10 APIs
-    python3 heavy_load_test.py --api 3            # Hit 3 APIs
+    python3 heavy_load_test.py                    # Default: 10 APIs, native/docker
+    python3 heavy_load_test.py --api 20           # Hit all 20 APIs
+    python3 heavy_load_test.py --api 5            # Hit 5 APIs
     python3 heavy_load_test.py --k8s              # Use k8s port-forward URL
-    python3 heavy_load_test.py --api 10 --k8s     # All 10 APIs on k8s
+    python3 heavy_load_test.py --api 20 --k8s     # All 20 APIs on k8s
 """
 
 import requests
@@ -110,8 +110,9 @@ def run_heavy_tests(base_url, num_apis, is_k8s):
         log("Failed to authenticate. Exiting.", Colors.RED)
         return False
     
-    # for large size mocks - All heavy endpoints available
+    # for large size mocks - All 20 heavy endpoints available
     all_endpoints = [
+        # Original 10 endpoints
         "products",
         "orders", 
         "reviews",
@@ -121,7 +122,18 @@ def run_heavy_tests(base_url, num_apis, is_k8s):
         "categories",
         "payments",
         "carts",
-        "full-dump"
+        "full-dump",
+        # New 10 endpoints
+        "product-search",
+        "order-history",
+        "user-activity",
+        "analytics-dashboard",
+        "sales-trends",
+        "inventory-report",
+        "review-sentiment",
+        "category-tree",
+        "shipping-data",
+        "financial-summary"
     ]
     
     # Select endpoints based on --api flag
@@ -167,15 +179,15 @@ def run_heavy_tests(base_url, num_apis, is_k8s):
     
     # Detailed results table
     log("Detailed Results:", Colors.YELLOW)
-    print(f"{'Endpoint':<15} {'Data (MB)':<12} {'Records':<10} {'Query (ms)':<12} {'Status':<10}")
-    print("-" * 60)
+    print(f"{'Endpoint':<20} {'Data (MB)':<12} {'Records':<10} {'Query (ms)':<12} {'Status':<10}")
+    print("-" * 70)
     
     for r in results:
         if r["success"]:
             status = "✓ OK"
-            print(f"{r['endpoint']:<15} {r['dataPulledMB']:<12.2f} {r['recordCount']:<10} {r['queryTimeMs']:<12} {status}")
+            print(f"{r['endpoint']:<20} {r['dataPulledMB']:<12.2f} {r['recordCount']:<10} {r['queryTimeMs']:<12} {status}")
         else:
-            print(f"{r['endpoint']:<15} {'N/A':<12} {'N/A':<10} {'N/A':<12} ✗ FAILED")
+            print(f"{r['endpoint']:<20} {'N/A':<12} {'N/A':<10} {'N/A':<12} ✗ FAILED")
     
     print()
     return failed == 0
@@ -186,20 +198,20 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    # Native/Docker: Test 5 APIs (default)
+    # Native/Docker: Test 10 APIs (default)
     python3 heavy_load_test.py
     
-    # Native/Docker: Test all 10 APIs
-    python3 heavy_load_test.py --api 10
+    # Native/Docker: Test all 20 APIs
+    python3 heavy_load_test.py --api 20
     
-    # Native/Docker: Test 3 APIs
-    python3 heavy_load_test.py --api 3
+    # Native/Docker: Test 5 APIs
+    python3 heavy_load_test.py --api 5
     
-    # Kubernetes: Test 5 APIs (requires port-forward)
+    # Kubernetes: Test 10 APIs (requires port-forward)
     python3 heavy_load_test.py --k8s
     
-    # Kubernetes: Test all 10 APIs
-    python3 heavy_load_test.py --api 10 --k8s
+    # Kubernetes: Test all 20 APIs
+    python3 heavy_load_test.py --api 20 --k8s
 
 Note: 
   - For native/docker, ensure server is running on localhost:1105
@@ -210,10 +222,10 @@ Note:
     parser.add_argument(
         "--api",
         type=int,
-        default=5,
-        choices=range(1, 11),
+        default=10,
+        choices=range(1, 21),
         metavar="N",
-        help="Number of APIs to hit (1-10, default: 5)"
+        help="Number of APIs to hit (1-20, default: 10)"
     )
     parser.add_argument(
         "--k8s",
@@ -243,3 +255,4 @@ def main():
 
 if __name__ == "__main__":
     exit(main())
+
