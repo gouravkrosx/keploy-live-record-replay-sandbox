@@ -674,9 +674,18 @@ def start_port_forward(namespace):
     log(f"Starting port-forward to marketplace-api in namespace '{namespace}'...", Colors.CYAN)
     
     try:
-        # Start port-forward in background
+        pod_cmd = ["kubectl", "get", "pods", "-n", namespace, "-l", "app=marketplace-api", "-o", "jsonpath={.items[0].metadata.name}"]
+        pod_name = subprocess.check_output(pod_cmd).decode().strip()
+        
+        if not pod_name:
+            log("No pods found!", Colors.RED)
+            return False
+
+        log(f"Targeting specific pod: {pod_name}", Colors.YELLOW)
+
+        # 2. PORT FORWARD TO THAT SPECIFIC POD (Instead of the Service)
         port_forward_process = subprocess.Popen(
-            ["kubectl", "port-forward", "svc/marketplace-api", "1105:1105", "-n", namespace],
+            ["kubectl", "port-forward", f"pod/{pod_name}", "1105:1105", "-n", namespace],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
