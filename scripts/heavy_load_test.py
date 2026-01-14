@@ -19,6 +19,7 @@ import subprocess
 import signal
 import atexit
 import sys
+import json
 from datetime import datetime
 
 # for large size mocks - Configuration
@@ -219,9 +220,79 @@ def start_port_forward(namespace):
     log(f"Starting port-forward to marketplace-api in namespace '{namespace}'...", Colors.CYAN)
     
     try:
+        # Get all pods with app=marketplace-api label in JSON format
+        pod_cmd = ["kubectl", "get", "pods", "-n", namespace, "-l", "app=marketplace-api", "-o", "json"]
+        pod_output = subprocess.check_output(pod_cmd).decode().strip()
+        pod_data = json.loads(pod_output)
+        
+        target_pod_name = None
+        fallback_pod_name = None
+        
+        items = pod_data.get("items", [])
+        if not items:
+            log("No pods found!", Colors.RED)
+            return False
+
+        # Iterate through pods to find the best candidate
+        target_pod_name = None
+        fallback_pod_name = None
+        
+        for pod in items:
+            metadata = pod.get("metadata", {})
+            status = pod.get("status", {})
+            spec = pod.get("spec", {})
+            
+            name = metadata.get("name")
+            phase = status.get("phase")
+            
+            if phase == "Running":
+                # If we haven't found a fallback yet, use this one
+                if not fallback_pod_name:
+                    fallback_pod_name = name
+                
+                # Check Init Containers for keploy-agent with mode record
+                init_containers = spec.get("initContainers", [])
+                for ic in init_containers:
+                    if ic.get("name") == "keploy-agent":
+                        args = ic.get("args", [])
+                        is_record_mode = False
+                        
+                        args_str = " ".join(args)
+                        if "--mode record" in args_str or "--mode=record" in args_str:
+                             is_record_mode = True
+                        
+                        try:
+                            if "--mode" in args:
+                                idx = args.index("--mode")
+                                if idx + 1 < len(args) and args[idx+1] == "record":
+                                    is_record_mode = True
+                        except:
+                            pass
+
+                        if is_record_mode:
+                            target_pod_name = name
+                            log(f"Found Keploy Record Pod: {name}", Colors.BLUE)
+                            break
+                
+                if target_pod_name:
+                    break # Found it
+                    
+        # Select the pod to use
+        final_pod_name = target_pod_name if target_pod_name else fallback_pod_name
+        
+        if not final_pod_name:
+            log("No running pods found!", Colors.RED)
+            return False
+
+        if target_pod_name:
+             log(f"Targeting Keploy Record Pod: {final_pod_name}", Colors.YELLOW)
+        else:
+             log(f"Targeting available pod: {final_pod_name}", Colors.YELLOW)
+             log("(Warning: Could not find pod with 'keploy-agent' in record mode)", Colors.YELLOW)
+
         # Start port-forward in background
         port_forward_process = subprocess.Popen(
-            ["kubectl", "port-forward", "svc/marketplace-api", "1105:1105", "-n", namespace],
+            ["kubectl", "port-forward", f"pod/{final_pod_name}", "1105:1105", "-n", namespace],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
@@ -261,6 +332,9 @@ def start_port_forward(namespace):
             
     except FileNotFoundError:
         log("kubectl not found. Please install kubectl.", Colors.RED)
+        return False
+    except json.JSONDecodeError:
+        log("Failed to parse kubectl output.", Colors.RED)
         return False
     except Exception as e:
         log(f"Failed to start port-forward: {e}", Colors.RED)
